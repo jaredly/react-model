@@ -25,13 +25,30 @@ Project.prototype.actions = {
 
 function RestModel(url) {
   return {
-    get: function (args, done) {
-      this.dao._getWithParams(url, this.params, function (err, data) {
-        if (!err) this.changeModel(data)
-        done(err, data)
-      }.bind(this))
+    context: function (params) {
+      return {url: fillUrl(url, params)}
     },
-    set: function (args, done) {
+    actions; {
+      get: function (args, done) {
+        this.dao._getWithParams(url, this.params, function (err, data) {
+          if (!err) this.replaceModel(data)
+          done(err, data)
+        }.bind(this))
+      },
+      setAttr: function (args, done) {
+        var data = {}
+        data[args.attr] = args.value
+        this.dao._postWithParams(url, this.params, data, function (err, data) {
+          if (!err) this.changeModel(args.attr, args.value)
+          done(err, data)
+        }.bind(this))
+      },
+      set: function (args, done) {
+        this.dao._postWithParams(url, this.params, args.data, function (err, data) {
+          if (!err) this.changeModel(args.data)
+          done(err, data)
+        }.bind(this))
+      }
     }
   }
 }
@@ -39,12 +56,24 @@ function RestModel(url) {
 module.exports = function (baseUrl) {
   return new Dao(baseUrl, {
     'Project': {
-      _type: RestModel('projects/:id'),
-      get: 'projects/:id',
-      // the context is {params: {}, change: fn(), dao: dao}
-      changeData: function (args, dao, done) {
-        this._post(this.url + '/data', {file: args.file}, function (err, data) {
-          this.changeModel('filename', data.filename)
+      mixins: [RestModel('projects/:id')],
+      // the context is {params: {}, changeModel: fn(), replaceModel: fn(), dao: dao}
+      changeData: function (args, done) {
+        this.dao._post(this.url + '/data', {file: args.file}, function (err, data) {
+          if (err) return done(err)
+          this.changeModel({
+            filename: data.filename
+          })
+          for (var id in data.feature_data) {
+            this.dao.replaceModel('FeatureData', {
+              pid: this.params.id,
+              id: id
+            }, data.feature_data[id])
+          }
+          this.dao.replaceModel('InstanceSmall', {
+            id: this.params.id
+          }, data.instances)
+          done(err, data)
         })
       }
     }

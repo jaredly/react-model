@@ -13,25 +13,36 @@ module.exports = {
   },
 
   /*
-  getModelParams: function (props, state) {
-    return {id: props.pid}
-  },
+  models: {
+    'projects': 'ListProjects',
+    'project': {
+      'name': 'Project',
+      'params': {
+        id: 'props.param'
+      }
+    },
+    'feature': {
+      name: 'Feature',
+      params: function (props, state) {
+        return {val: this.getComputedVal()}
+      }
+    }
+  }
   */
 
- modelAction: function (name, args, done) {
-   var params = this._getModelParams()
-   this.props.ctx.dao.modelAction(this.model, params, name, args, done)
- },
+  modelAction: function (name, args, done) {
+    if (!this.props.ctx || !this.props.ctx.dao) return
+    var params = this._getModelParams()
+    this.props.ctx.dao.modelAction(this.model, params, name, args, done)
+  },
 
-  _onModelChange: function (attr, value) {
-    if (arguments.length === 1) {
-      return this.setState({model: attr, modelLoading: false, modelError: false})
-    }
-    if (!Array.isArray(attr)) {
-      attr = [attr]
+  _onModelChange: function (data, isUpdate) {
+    var model = data
+    if (isUpdate) {
+      model = React.addons.update(this.state.model, data)
     }
     this.setState({
-      model: React.addons.update(this.state.model, makeUpdate(attr, value)),
+      model: model,
       modelLoading: false,
       modelError: false
     })
@@ -65,23 +76,18 @@ module.exports = {
 
   _startListening: function (params) {
     if (!this.props.ctx || !this.props.ctx.dao) return
-    this.props.ctx.dao.watchModel(
-      this.model,
-      params,
-      this._onModelChange,
-      this._onModelLoading,
-      this._onModelError
-    )
+    this._onModelLoading()
+    this.props.ctx.dao.model(this.model, params)
+      .on('change', this._onModelChange)
+      .get(function (err) {
+        if (err) return this._onModelError(err)
+        this.setState({modelLoading: false})
+      })
   },
   _stopListening: function (params) {
     if (!this.props.ctx || !this.props.ctx.dao) return
-    this.props.ctx.dao.unwatchModel(
-      this.model,
-      params,
-      this._onModelChange,
-      this._onModelLoading,
-      this._onModelError
-    )
+    this.props.ctx.dao.model(this.model, params)
+      .off('change', this._onModelChange)
   }
 }
 

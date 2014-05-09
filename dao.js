@@ -1,22 +1,17 @@
 
 var _ = require('lodash')
+  , Listener = require('./listener')
 
-function hashJson(obj) {
-  if (obj === undefined) return 'null'
-  if (Array.isArray(obj)) {
-    return JSON.stringify(obj.map(hashJson))
+
+function merge(a, b) {
+  for (var c in b) {
+    a[c] = b[c]
   }
-  if ('object' !== typeof obj) {
-    return JSON.stringify(obj)
-  }
-  var keys = Object.keys(obj)
-  keys.sort()
-  return keys.map(function (name) {
-    var val = obj[name]
-      , red
-    return JSON.stringify(name) + ': ' + hashJson(val)
-  }).join(',')
+  return a
 }
+
+
+
 
 model.exports = Dao
 
@@ -26,13 +21,14 @@ model.exports = Dao
  *    otherModelName: function (params, done) {}
  * }
  */
-function Dao(baseUrl, getters) {
+function Dao(baseUrl, models) {
   this.baseUrl = baseUrl || '/'
-  this.modelGetters = getters || {}
-  this.model_listeners = {}
-  this.listeners = {}
+  this.models = models
+  this.evt = new Listener()
   this.data = {}
 }
+
+// TODO: modelAction body.
 
 Dao.prototype = {
   // public api
@@ -40,87 +36,87 @@ Dao.prototype = {
     var that = this
     var chain = {
       on: function (what, fn) {
-        that.onModel(name, params, what, fn)
+        that.evt.onModel(name, params, what, fn)
         return chain
       },
       off: function (what, fn) {
-        that.offModel(name, params, what, fn)
+        that.evt.offModel(name, params, what, fn)
         return chain
+      },
+      get: function (fn) {
+        that.modelAction(name, params, 'get', null, fn)
       }
     }
   },
-  onModel: function (model, params, what, fn) {
-    if (!this.model_listeners[model]) {
-      this.model_listeners[model] = {
-      }
+
+  // create the function for the model action
+  _modelAction: function (model, params, name, args) {
+    if (!this.models[model]) {
+      throw new Error('Model not found')
     }
-    var pdata = hashJson(params)
-    if (!this.model_listeners[model][pdata]) {
-      this.model_listeners[model][pdata] = {
-        change: [],
-        loading: [],
-        error: []
-      }
+    var context = {
+          params: params,
+          chamgeModel: this.changeModel.bind(this, model, params),
+          replaceModel: this.replaceModel.bind(this, model, params),
+          dao: this
+        }
+      , actions = {}
+      , def = this.models[model]
+    if (def.mixins) {
+      def.mixins.forEach(function (mixin) {
+        if (mixin.context) {
+          merge(context, mixin.context(params))
+        }
+        if (mixin.actions) {
+          merge(actions, mizin.actions)
+        }
+      })
     }
-    if (['change', 'loading', 'error'].indexOf(what) === -1) {
-      throw new Error("Can't listen for " + what)
+    var action = def.actions[name] || actions[name]
+    if (!action) {
+      throw new Error("Action not defined for model: " + name)
     }
-    this.model_listeners[model][pdata][what].push(fn)
-  },
-  offModel: function (model, params, what, fn) {
-    var pdata = hashJson(params)
-    if (!this.model_listeners[model]) return false
-    if (!this.model_listeners[model][pdata]) return false
-    if (!this.model_listeners[model][pdata][what].length) return false
-    var ar = this.model_listeners[model][pdata][what]
-      , ix = ar.indexOf(fn)
-    if (ix === -1) return false
-    ar.splice(ix, 1)
-    return true
+    return action.bind(context, args)
   },
 
-  watchModel: function (name, params, change, loading, error) {
-    this.model(name, params)
-      .on('change', change)
-      .on('loading', loading)
-      .on('error', error)
+  modelAction: function (model, params, name, args, done) {
+    var action = this._modelAction(model, params, name, args)
+    this.ev.startTransaction()
 
-    this.getModel(model, params, false)
-  },
-  unwatchModel: function (name, params, change, loading, error) {
-    this.model(name, params)
-      .off('change', change)
-      .off('loading', loading)
-      .off('error', error)
-  },
-
-  on: function (event, handler) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = []
-    }
-    this.listeners[event].push(handler)
-  },
-  trigger: function (event, args) {
-    if (this.listeners[event]) return false
-    this.listeners[event].forEach(function (handler) {
-      handler.apply(null, args)
+    action(function () {
+      this.ev.finishTransation()
+      done.apply(null, arguments)
     })
-    return true
   },
 
-  // args must be an array of arguments to pass to the handlers.
-  triggerModel: function (model, params, what, args) {
-    if (!this.model_listeners[model]) return false
-    if ('string' !== typeof params) params = hashJson(params)
-    if (!this.model_listeners[model][params]) return false
-    if (!this.model_listeners[model][params][what].length) return false
+  getModel: function (model, params, done) {
+    var pdata = hashJson(params)
+    if (!force && this.data[model] && this.data[model][pdata]) {
+      // TODO: clone here?
+      return this.triggerModel(model, pdata, 'change', [this.data[model][pdata]])
+    }
 
-    this.model_listeners[model][params][what].forEach(function (handler) {
-      handler.apply(null, args)
-    })
-    return true
+    this.modelAction(model, params, 'get', null, done)
+    /*
+    var getter = this.modelGetters[model].bind(this)
+      , done = function (err, data) {
+          if (err) {
+            if (false === this.triggerModel(model, pdata, 'error', [err])) {
+              this.trigger('error', err)
+            }
+            return
+          }
+          if (!this.data[model]) this.data[model] = {}
+          this.changeModel(model, pdata, data)
+        }.bind(this)
+    if ('string' === typeof getter) {
+      return this._getWithParams(getter, params, done)
+    }
+    getter(params, done)
+    */
   },
 
+  // LOOK INTO
   getModel: function (model, params, force) {
     if (!this.modelGetters[model]) {
       throw new Error("Don't know how to get model: " + model)
@@ -148,23 +144,28 @@ Dao.prototype = {
     getter(params, done)
   },
 
-  modelAction: function () {
+  // isFormatted: "data" uses the $set syntax
+  changeModel: function (model, params, data, isFormatted) {
+    var pdata = hashJson(params)
+      , update = data
+
+    if (isFormatted) {
+      update = {}
+      for (var name in data) {
+        update[name] = {$set: data[name]}
+      }
+    }
+
+    this.data[model][pdata] = React.addons.update(this.data[model][pdata], update)
+    this.triggerModel(model, pdata, 'change', [update, true])
   },
 
-  changeModel: function (model, params, attr, value) {
+  replaceModel: function (model, params, data) {
     var pdata = hashJson(params)
 
-    if (arguments.length === 3) {
-      this.data[model][pdata] = attr
-      this.triggerModel(model, pdata, 'change', [attr])
-      return
-    }
-
-    if (!Array.isArray(attr)) {
-      attr = [attr]
-    }
-    this.data[model][pdata] = React.addons.update(this.data[model][pdata], makeUpdate(attr, value))
-    this.triggerModel(model, pdata, 'change', [attr, value])
+    if (!this.data[model]) this.data[model] = {}
+    this.data[model][pdata] = data
+    this.triggerModel(model, pdata, 'change', [data])
   },
 
   // utility functions
@@ -212,3 +213,21 @@ function fillUrl(url, params) {
     return params[what.slice(1)] || what
   })
 }
+
+function hashJson(obj) {
+  if (obj === undefined) return 'null'
+  if (Array.isArray(obj)) {
+    return JSON.stringify(obj.map(hashJson))
+  }
+  if ('object' !== typeof obj) {
+    return JSON.stringify(obj)
+  }
+  var keys = Object.keys(obj)
+  keys.sort()
+  return keys.map(function (name) {
+    var val = obj[name]
+      , red
+    return JSON.stringify(name) + ': ' + hashJson(val)
+  }).join(',')
+}
+
