@@ -2,17 +2,6 @@
 var _ = require('lodash')
   , Listener = require('./listener')
 
-
-function merge(a, b) {
-  for (var c in b) {
-    a[c] = b[c]
-  }
-  return a
-}
-
-
-
-
 model.exports = Dao
 
 /**
@@ -55,6 +44,7 @@ Dao.prototype = {
       throw new Error('Model not found')
     }
     var context = {
+          model: model,
           params: params,
           chamgeModel: this.changeModel.bind(this, model, params),
           replaceModel: this.replaceModel.bind(this, model, params),
@@ -72,7 +62,13 @@ Dao.prototype = {
         }
       })
     }
-    var action = def.actions[name] || actions[name]
+    if (def.context) {
+      merge(context, def.context(params))
+    }
+    if (def.actions) {
+      merge(actions, def.actions)
+    }
+    var action = actions[name]
     if (!action) {
       throw new Error("Action not defined for model: " + name)
     }
@@ -89,63 +85,17 @@ Dao.prototype = {
     })
   },
 
-  getModel: function (model, params, done) {
+  getCached: function (model, params) {
     var pdata = hashJson(params)
-    if (!force && this.data[model] && this.data[model][pdata]) {
-      // TODO: clone here?
-      return this.triggerModel(model, pdata, 'change', [this.data[model][pdata]])
-    }
-
-    this.modelAction(model, params, 'get', null, done)
-    /*
-    var getter = this.modelGetters[model].bind(this)
-      , done = function (err, data) {
-          if (err) {
-            if (false === this.triggerModel(model, pdata, 'error', [err])) {
-              this.trigger('error', err)
-            }
-            return
-          }
-          if (!this.data[model]) this.data[model] = {}
-          this.changeModel(model, pdata, data)
-        }.bind(this)
-    if ('string' === typeof getter) {
-      return this._getWithParams(getter, params, done)
-    }
-    getter(params, done)
-    */
+    return this.data[model] && this.data[model][pdata]
   },
 
-  // LOOK INTO
-  getModel: function (model, params, force) {
-    if (!this.modelGetters[model]) {
-      throw new Error("Don't know how to get model: " + model)
-    }
-    var pdata = hashJson(params)
-    if (!force && this.data[model] && this.data[model][pdata]) {
-      // TODO: clone here?
-      return this.triggerModel(model, pdata, 'change', [this.data[model][pdata]])
-    }
-    this.triggerModel(model, pdata, 'loading', [true])
-    var getter = this.modelGetters[model].bind(this)
-      , done = function (err, data) {
-          if (err) {
-            if (false === this.triggerModel(model, pdata, 'error', [err])) {
-              this.trigger('error', err)
-            }
-            return
-          }
-          if (!this.data[model]) this.data[model] = {}
-          this.changeModel(model, pdata, data)
-        }.bind(this)
-    if ('string' === typeof getter) {
-      return this._getWithParams(getter, params, done)
-    }
-    getter(params, done)
+  getModel: function (model, params, done) {
+    this.modelAction(model, params, 'get', null, done)
   },
 
   // isFormatted: "data" uses the $set syntax
-  changeModel: function (model, params, data, isFormatted) {
+  changeModel: function (model, params, data, isFormatted, noCache) {
     var pdata = hashJson(params)
       , update = data
 
@@ -156,16 +106,20 @@ Dao.prototype = {
       }
     }
 
-    this.data[model][pdata] = React.addons.update(this.data[model][pdata], update)
-    this.triggerModel(model, pdata, 'change', [update, true])
+    if (!noCache) {
+      this.data[model][pdata] = React.addons.update(this.data[model][pdata], update)
+    }
+    this.evt.triggerModel(model, pdata, 'change', [update, true])
   },
 
-  replaceModel: function (model, params, data) {
+  replaceModel: function (model, params, data, noCache) {
     var pdata = hashJson(params)
 
-    if (!this.data[model]) this.data[model] = {}
-    this.data[model][pdata] = data
-    this.triggerModel(model, pdata, 'change', [data])
+    if (!noCache) {
+      if (!this.data[model]) this.data[model] = {}
+      this.data[model][pdata] = data
+    }
+    this.evt.triggerModel(model, pdata, 'change', [data])
   },
 
   // utility functions
@@ -229,5 +183,12 @@ function hashJson(obj) {
       , red
     return JSON.stringify(name) + ': ' + hashJson(val)
   }).join(',')
+}
+
+function merge(a, b) {
+  for (var c in b) {
+    a[c] = b[c]
+  }
+  return a
 }
 
