@@ -14,6 +14,12 @@ var fixtures = {
         good: 'awesome',
         out: 'in'
       }
+    ],
+    [
+      'tolerate undefined',
+      [{notthere: 'state.model.thing.not.there'},
+        {}, {model: {}}, {}],
+      {notthere: undefined}
     ]
   ]
 }
