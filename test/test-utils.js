@@ -20,6 +20,12 @@ var fixtures = {
       [{notthere: 'state.model.thing.not.there'},
         {}, {model: {}}, {}],
       {notthere: undefined}
+    ],
+    [
+      'tolerate null',
+      [{notthere: 'state.model.thing.not.there'},
+        {}, {model: null}, {}],
+      {notthere: null}
     ]
   ]
 }
