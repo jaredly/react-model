@@ -1,6 +1,7 @@
 
 var _ = require('lodash')
   , Listener = require('./listener')
+  , utils = require('./utils')
 
 model.exports = Dao
 
@@ -55,18 +56,18 @@ Dao.prototype = {
     if (def.mixins) {
       def.mixins.forEach(function (mixin) {
         if (mixin.context) {
-          merge(context, mixin.context(params))
+          utils.merge(context, mixin.context(params))
         }
         if (mixin.actions) {
-          merge(actions, mizin.actions)
+          utils.merge(actions, mizin.actions)
         }
       })
     }
     if (def.context) {
-      merge(context, def.context(params))
+      utils.merge(context, def.context(params))
     }
     if (def.actions) {
-      merge(actions, def.actions)
+      utils.merge(actions, def.actions)
     }
     var action = actions[name]
     if (!action) {
@@ -86,7 +87,7 @@ Dao.prototype = {
   },
 
   getCached: function (model, params) {
-    var pdata = hashJson(params)
+    var pdata = utils.hashJson(params)
     return this.data[model] && this.data[model][pdata]
   },
 
@@ -96,7 +97,7 @@ Dao.prototype = {
 
   // isFormatted: "data" uses the $set syntax
   changeModel: function (model, params, data, isFormatted, noCache) {
-    var pdata = hashJson(params)
+    var pdata = utils.hashJson(params)
       , update = data
 
     if (isFormatted) {
@@ -113,7 +114,7 @@ Dao.prototype = {
   },
 
   replaceModel: function (model, params, data, noCache) {
-    var pdata = hashJson(params)
+    var pdata = utils.hashJson(params)
 
     if (!noCache) {
       if (!this.data[model]) this.data[model] = {}
@@ -123,8 +124,11 @@ Dao.prototype = {
   },
 
   // utility functions
+  _url: function (url) {
+    return this.baseUrl + url
+  },
   _get: function (url, done) {
-    request.get(this.baseUrl + url)
+    request.get(this._url(url))
       .end(function (err, req) {
         if (err) return done(err)
         if (req.status !== 200) {
@@ -134,10 +138,10 @@ Dao.prototype = {
       })
   },
   _getWithParams: function (url, params, done) {
-    this._get(fillUrl(url, params), done)
+    this._get(utils.fillUrl(url, params), done)
   },
   _post: function (url, data, done) {
-    request.get(this.baseUrl + url)
+    request.get(this._url(url))
       .send(data)
       .end(function (err, req) {
         if (err) return done(err)
@@ -148,47 +152,7 @@ Dao.prototype = {
       })
   },
   _postWithParams: function (url, params, data, done) {
-    this._post(fillUrl(url, params), data, done)
+    this._post(utils.fillUrl(url, params), data, done)
   }
-}
-
-function makeUpdate(attrs, value) {
-  var update = {}
-    , c = update
-  while (attrs.length) {
-    c = c[attrs.shift()] = {}
-  }
-  c.$set = value
-  return update
-}
-
-function fillUrl(url, params) {
-  return url.replace(/:[^\/]+/g, function (what) {
-    return params[what.slice(1)] || what
-  })
-}
-
-function hashJson(obj) {
-  if (obj === undefined) return 'null'
-  if (Array.isArray(obj)) {
-    return JSON.stringify(obj.map(hashJson))
-  }
-  if ('object' !== typeof obj) {
-    return JSON.stringify(obj)
-  }
-  var keys = Object.keys(obj)
-  keys.sort()
-  return keys.map(function (name) {
-    var val = obj[name]
-      , red
-    return JSON.stringify(name) + ': ' + hashJson(val)
-  }).join(',')
-}
-
-function merge(a, b) {
-  for (var c in b) {
-    a[c] = b[c]
-  }
-  return a
 }
 

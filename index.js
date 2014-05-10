@@ -2,6 +2,7 @@
 // A simple model mixin
 
 var _ = require('lodash')
+  , utils = require('./utils')
 
 module.exports = {
   getInitialState: function () {
@@ -58,11 +59,15 @@ module.exports = {
 
   _getModelParams: function (which, props, state) {
     if ('string' === typeof this.models[which] || !this.models[which].params) return null
+    var params = this.models[which].params
     if (arguments.length <= 1) {
       props = this.props
       state = this.state
     }
-    return this.models[which](props, state)
+    if ('object' === typeof params) {
+      return utils.stringParams(params, props, state, this)
+    }
+    return params.call(this, props, state)
   },
 
   _onModelChange: function (which, data, isUpdate) {

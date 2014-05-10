@@ -1,6 +1,8 @@
 
 // a transaction-aware change listener
 
+var utils = require('./utils')
+
 module.exports = Listener
 
 function Listener() {
@@ -29,7 +31,7 @@ Listener.prototype = {
   },
 
   modelEvent: function (model, params, what) {
-    var pdata = hashJson(params)
+    var pdata = utils.hashJson(params)
     return model + ':' + pdata + ':' + what
   },
 
@@ -84,7 +86,7 @@ Listener.prototype = {
     if (event.indexOf('change' === 0)) {
       if (args[1]) { // is update
         if (evt.args[1]) {
-          mergeUpdates(evt.args[0], args[0])
+          utils.mergeUpdates(evt.args[0], args[0])
         } else {
           evt.args[0] = React.addons.update(evt.args[0], args[0])
         }
@@ -96,38 +98,5 @@ Listener.prototype = {
   triggerModel: function (model, params, what, args) {
     return this.trigger(this.modelEvent(model, params, what), args)
   },
-}
-
-function mergeUpdates(dest, src) {
-  for (var name in src) {
-    if (undefined === dest[name]) {
-      dest[name] = src[name]
-    } else {
-      if (src[name].$set) {
-        dest[name] = src[name]
-      } else if (dest[name].$set) {
-        dest[name].$set = React.addons.update(dest[name].$set, src[name])
-      } else {
-        mergeUpdates(dest[name], src[name])
-      }
-    }
-  }
-}
-
-function hashJson(obj) {
-  if (obj === undefined) return 'null'
-  if (Array.isArray(obj)) {
-    return JSON.stringify(obj.map(hashJson))
-  }
-  if ('object' !== typeof obj) {
-    return JSON.stringify(obj)
-  }
-  var keys = Object.keys(obj)
-  keys.sort()
-  return keys.map(function (name) {
-    var val = obj[name]
-      , red
-    return JSON.stringify(name) + ': ' + hashJson(val)
-  }).join(',')
 }
 
